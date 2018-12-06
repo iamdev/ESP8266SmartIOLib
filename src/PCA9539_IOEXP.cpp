@@ -1,7 +1,35 @@
+//***********************************************************************************
+// MIT License
+// 
+// Copyright (c) 2018 Kamon Singtong
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//***********************************************************************************
+// Owner : Kamon Singtong (MakeArduino.com)
+// email : kamon.dev@hotmail.com
+// fb : makearduino
+//***********************************************************************************
+
 #include "PCA9539_IOEXP.h"
 #include <Arduino.h>
 
-#define DEBUG
+//#define DEBUG
 #include "debug.h"
 
 #define PCA9539_INPUT_REGISTER       0x00
@@ -25,7 +53,7 @@ void print_binary(int num,int nbit){
     SerialDebug_printf("]");
 }
 #else
-void print_binary(int num,int nbit)
+#define print_binary(num,nbit)
 #endif
 
 PCA9539::PCA9539(TwoWire *wire,int deviceAddress)
@@ -68,7 +96,11 @@ void PCA9539::begin(){
         //_in_buffer = (data|_output_bitmask)&0xFFFF;    
         //_out_buffer = (data|_input_bitmask)&0xFFFF; 
         _setMode(~_output_bitmask);
-        write(0xFFFF);
+        //write(0xFFFF);
+
+        int in = _read()|_output_bitmask;    
+        in &=0xFFFF;
+        _in_buffer = in;
     }
 }
 
@@ -200,10 +232,11 @@ void PCA9539::write(int ch,int state){
     _write(data);
 }
 
-void PCA9539::toggle(int ch){
-    if(ch<0 && ch>= _outputCount)return;
-    int state = getOutputState(ch);
-    this->write(ch,!state);
+int PCA9539::toggle(int ch){
+    if(ch<0 && ch>= _outputCount)return 0;
+    int state = !getOutputState(ch);
+    this->write(ch,state);
+    return state;
 }
 
 int PCA9539::getOutputState(int ch){

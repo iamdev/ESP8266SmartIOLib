@@ -1,3 +1,31 @@
+//***********************************************************************************
+// MIT License
+// 
+// Copyright (c) 2018 Kamon Singtong
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//***********************************************************************************
+// Owner : Kamon Singtong (MakeArduino.com)
+// email : kamon.dev@hotmail.com
+// fb : makearduino
+//***********************************************************************************
+
 #include "PCF8574_IOEXP.h"
 #include <Arduino.h>
 #define PCF8574_I2C_ALTADDR 0x18
@@ -7,6 +35,21 @@
 
 #ifndef digitalPinToInterrupt
 #define digitalPinToInterrupt(pin) (pin)
+#endif
+
+#ifdef DEBUG
+void print_binary(int num,int nbit){
+    int m = 1<<(nbit-1);
+    SerialDebug_printf("%04X [",num);
+    for(int i = 0;i<nbit;i++){        
+        SerialDebug((num & m)?"1":"0");
+        if((i+1)%4==0)SerialDebug(" ");
+        m>>=1;
+    }
+    SerialDebug_printf("]");
+}
+#else
+#define print_binary(num,nbit)
 #endif
 
 PCF8574::PCF8574(TwoWire *wire,int deviceAddress)
@@ -72,23 +115,7 @@ int PCF8574::setInputInterrupt(int pin,void (*callback)(void)){
     attachInterrupt(digitalPinToInterrupt(pin), callback, FALLING); 
 }
 
-
-void PCF8574::setInputActiveLevel(int state){
-    this->_inputActiveLevel = state;
-}
-void PCF8574::setOutputActiveLevel(int state){
-    this->_outputActiveLevel = state;
-}
-
-
-int PCF8574::inputActiveLevel(){
-    return this->_inputActiveLevel;
-}
-int PCF8574::outputActiveLevel(){
-    return this->_outputActiveLevel;
-}
-
-int PCF8574::_read(){
+uint16_t PCF8574::_read(){
     _wire->beginTransmission( _deviceAddress );
     _wire->endTransmission();
     _wire->requestFrom(_deviceAddress, (int)1 ); // request only one byte
@@ -102,20 +129,42 @@ int PCF8574::_read(){
     return data;
 }
 
-void PCF8574::_write(int data){
+void PCF8574::_write(uint16_t data){
     _wire->beginTransmission(_deviceAddress);
     _wire->write(data&0xFF);
     _wire->endTransmission(); 
 }
 
-int PCF8574::read(int pin){
+int PCF8574::read(int ch){
+    if(ch<0 && ch>= _inputCount) return 0;
+    int pin = _inputChannels[ch];
     SerialDebug("IO_EXP :: read data ");
     SerialDebug(_read(),BIN);
     SerialDebug("\n");
     return (_read()>>pin)&0x1;
 }
 
-void PCF8574::write(int pin,int state){
+uint16_t PCF8574::read(){
+    int data = this->_read();
+    SerialDebug("IO_EXP :: Read => ");
+    print_binary(data,8);
+    SerialDebug("\n");
+    data &= _input_bitmask;
+    int out = 0;
+    for(int i=0;i<_inputCount;i++){
+        int b = _inputChannels[i];
+        out <<=1;        
+        out |= ((data>>b)&1)?1:0;
+    }
+    SerialDebug("IO_EXP :: Out Channels => ");
+    SerialDebug(out,BIN);
+    SerialDebug("\n");
+    return out;
+}
+
+void PCF8574::write(int ch,int state){
+    if(ch<0 && ch>= _outputCount)return;
+    int pin = _outputChannels[ch];
     SerialDebug_printf("IO_EXP :: Write bit %d to %d\n",pin,state);
     SerialDebug("-----------------------------------\n");
 
@@ -134,24 +183,20 @@ void PCF8574::write(int pin,int state){
     _write(data);
 }
 
-int PCF8574::readChannel(int ch){
-    if(ch<0 && ch>= _inputCount)return 0;
-    int out = read(_inputChannels[ch]);
-    if(_inputActiveLevel == LOW) out = !out;
-    return out;
+void PCF8574::write(uint16_t data){    
+    for(int i=0;i<_outputCount;i++){
+        int pin = _outputChannels[i];
+        _out_buffer &= (~(1<<pin))&0xFFFF;
+        _out_buffer |= ((data&(1<<i))?1:0)<<pin;
+    }
+    this->_write(_out_buffer|_input_bitmask);
 }
 
-void PCF8574::writeChannel(int ch,int state){
-    if(ch<0 && ch>= _outputCount)return;
-    if(_outputActiveLevel == LOW) state = !state;
-    this->write(_outputChannels[ch],state);
-}
-
-void PCF8574::writeChannelToggle(int ch){
-    if(ch<0 && ch>= _outputCount)return;
-    int state = getOutputState(ch);
-    if(_outputActiveLevel == LOW) state = !state;    
-    this->write(_outputChannels[ch],state);
+int PCF8574::toggle(int ch){
+    if(ch<0 && ch>= _outputCount)return 0;
+    int state = !getOutputState(ch);
+    this->write(ch,state);
+    return state;
 }
 
 int PCF8574::getOutputState(int ch){
@@ -179,10 +224,6 @@ void PCF8574::inputLoop(){
             int p = _inputChannels[i];
             int p1 = (_in_buffer>>p)&1;
             int p2 = (in>>p)&1;
-            if(_inputActiveLevel==HIGH){
-                p1 = !p1;
-                p2 = !p2;
-            }
             if(p1 && !p2){
                 _inputStatus[i].startTime = millis();
                 _inputStatus[i].state = INPUT_STATE_HOLE;
