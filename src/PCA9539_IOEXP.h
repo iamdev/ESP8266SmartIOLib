@@ -33,7 +33,7 @@
 
 enum InputState{
     INPUT_STATE_NONE,
-    INPUT_STATE_HOLE,
+    INPUT_STATE_DOWN,
     INPUT_STATE_RELEASED,
 };
 

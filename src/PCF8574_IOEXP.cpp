@@ -30,7 +30,7 @@
 #include <Arduino.h>
 #define PCF8574_I2C_ALTADDR 0x18
 
-#define DEBUG
+//#define DEBUG
 #include "debug.h"
 
 #ifndef digitalPinToInterrupt
@@ -226,7 +226,7 @@ void PCF8574::inputLoop(){
             int p2 = (in>>p)&1;
             if(p1 && !p2){
                 _inputStatus[i].startTime = millis();
-                _inputStatus[i].state = INPUT_STATE_HOLE;
+                _inputStatus[i].state = INPUT_STATE_DOWN;
                 _inputStatus[i].duration = 0;
             }else if (!p1 && p2){
                 _inputStatus[i].state = INPUT_STATE_RELEASED;

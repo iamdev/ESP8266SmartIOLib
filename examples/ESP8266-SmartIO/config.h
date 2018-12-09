@@ -42,5 +42,5 @@ static char ntpServer[100] = "pool.ntp.org";
 #define ntpTimeZone 7
 #define minutesTimeZone 0
 
-const int exp_input_pin[] = {2,3,0,1};
+const int exp_input_pin[] = {0,1,2,3,4,5,6,7};
 const int exp_output_pin[] = {8,9,10,11,12,13,14,15};

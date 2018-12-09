@@ -35,6 +35,11 @@
 #define EEPROM_BLOCK_SIZE 16
 #include <Wire.h>
 
+#if defined(DEBUG_EEPROM) && !defined(DEBUG)
+#define DEBUG
+#endif
+
+
 class EEPROM_EX{
 public :
     EEPROM_EX(TwoWire *wire,int deviceAddress);

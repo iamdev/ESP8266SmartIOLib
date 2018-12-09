@@ -1,3 +1,28 @@
+/*******************************************************************/
+// This example compatible for MakeArduino Smart I/O Shield for WeMos D1 mini
+// Features:
+//   1. Input push switch 8ch
+//   2. Output 8ch (Active Low) to connect Relay Module or other 
+//   3. LCD Display Clock
+//   4. WiFi SSID/Pass via APWebConfig (Captive portal) while logon wifi 
+//      ESP-xxxxxxxx with pass 88888888
+//   5. Support Blynk application config via APWebConfig
+//   6. Output interface with Blynk via V0-V7
+/*******************************************************************/
+// Hardware Required :
+//   1. LCD 1602 with I2C interface
+//   2. 8ch Relay modules
+//   3. 8push button or membrain keypad
+/*******************************************************************/
+// External Library Required :
+//   1. Blynk - Install from Library Manager
+//   2. LiquidCrystal_I2C (by Frank de Brabander) Install from Library Manager
+//   3. SimpleTask - Download and install from Zip 
+//      (https://github.com/iamdev/SimpleTask/releases/latest)
+/*******************************************************************/
+// สนใจสั่งซื้อบอร์ด SmartIO Shield 16ch ได้ที่ fb:makearduino
+/*******************************************************************/
+
 #define BLYNK_PRINT Serial
 
 #include <SerialDebug.h>
@@ -7,10 +32,6 @@
 #include <SimpleTask.h>
 #include <LiquidCrystal_I2C.h>
 #include "config.h"
-
-/*--Hardware List--
-1. LCD-1602 I2C
-------------------*/
 
 /******************************************/
 /* Global Type Definition                 */
@@ -30,8 +51,8 @@ EEPROM_EX eeprom(EEPROM_I2C_ADDR);
 DeviceClass Device(DEVICE_SIGNATURE);
 DS3231RTC rtc;
 SerialCommand cmd;
-//LiquidCrystal_I2C lcd(0x3F,16,2);
-LiquidCrystal_I2C lcd(0x27,16,2);
+LiquidCrystal_I2C lcd(0x3F,16,2);
+//LiquidCrystal_I2C lcd(0x27,16,2);
 /******************************************/ 
 
 #ifdef DEBUG
@@ -69,8 +90,8 @@ void setup() {
   /******************************************/
   /* Setup PCF8574 IO-Expander              */
   /******************************************/  
-  ex.setOutputChannels(4,exp_output_pin);
-  ex.setInputChannels(4,exp_input_pin);
+  ex.setOutputChannels(8,exp_output_pin);
+  ex.setInputChannels(8,exp_input_pin);
   ex.onInputChange(readExpInput);
   ex.begin();
   ex.write(0xFF);
@@ -106,6 +127,9 @@ void setup() {
   if(!digitalRead(BUTTON_PIN)){    
     pinMode(LED_BUILTIN,OUTPUT); 
     digitalWrite(LED_BUILTIN,LOW);
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("Config Mode...");
     handleWebConfig();    
   }
   /******************************************/
@@ -234,10 +258,19 @@ void setupTasks(){
 }
 
 void readExpInput(){
-    for(int i=0;i<4;i++){
+    for(int i=0;i<8;i++){
       struct InputStatus s = ex.getInputStatus(i);
       if(s.state == INPUT_STATE_RELEASED){        
         int n = ex.toggle(i);
+        if(i==7 && s.duration > 5000) {
+          SerialDebug("Formatting Device...\n");;
+          lcd.clear();
+          lcd.setCursor(0,0);
+          lcd.print("Formatting...");
+          Device.format();
+          delay(2000);
+          ESP.restart();
+        }
         switch(i){
           case 0:Blynk.virtualWrite(V0,!n);break;
           case 1:Blynk.virtualWrite(V1,!n);break;
@@ -247,6 +280,7 @@ void readExpInput(){
           case 5:Blynk.virtualWrite(V5,!n);break;
           case 6:Blynk.virtualWrite(V6,!n);break;
           case 7:Blynk.virtualWrite(V7,!n);break;
+          
         }
         SerialDebug_printf("Button %d Pressed!! (%d ms.)\n",i+1,s.duration);
       }
