@@ -52,6 +52,7 @@ class PCA9539{
         int setOutputChannels(int n,const int * bits);
         int setInputInterrupt(int pin,void (*callback)(void));
         void onInputChange(void (*callback)(void));
+        void setInverse(bool inverse);
         void inputLoop();
         int read(int ch);
         uint16_t read();
@@ -73,6 +74,7 @@ class PCA9539{
         int _input_bitmask;
         int _output_bitmask;
         int _out_buffer,_in_buffer;
+        bool _inverse=false;
         struct InputStatus _inputStatus[16];
         void (*_inputChangeCallback)(void);        
         TwoWire *_wire;

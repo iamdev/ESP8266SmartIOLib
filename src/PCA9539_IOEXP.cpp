@@ -63,21 +63,34 @@ PCA9539::PCA9539(TwoWire *wire,int deviceAddress)
     _isValid = (_wire->endTransmission()==0);    
     _output_bitmask = 0;
     _input_bitmask = 0;
-
+    _out_buffer = 0xFFFF;
 }
 
 PCA9539::PCA9539(int deviceAddress)
     :PCA9539(&Wire,deviceAddress)
 {
+
+}
+
+void PCA9539::setInverse(bool inverse){
+    _inverse = inverse;
 }
 
 void PCA9539::_setMode(uint16_t mode){
+    int inv = _inverse?0xFFFF:0;
+    _wire->beginTransmission(_deviceAddress);
+    _wire->write(PCA9539_INVERS_REGISTER);
+    _wire->write(inv&0xFF);
+    _wire->write((inv>>8)&0xFF);
+    _wire->endTransmission();    
     _wire->beginTransmission(_deviceAddress);
     _wire->write(PCA9539_CONFIG_REGISTER);
     _wire->write(mode&0xFF);
     _wire->write((mode>>8)&0xFF);
     _wire->endTransmission();
+    this->_write(_out_buffer|_input_bitmask);    
 }
+
 void PCA9539::begin(){
     int addr = _deviceAddress;
     _wire->beginTransmission(addr);
@@ -130,8 +143,9 @@ int PCA9539::setOutputChannels(int n,const int * bits){
     print_binary(_output_bitmask,16);
     SerialDebug("\n");
     if(_isValid){
-        _setMode(~_output_bitmask);   
-        this->write(0xFFFF);
+        this->_write(_out_buffer|_input_bitmask);
+        _setMode(~_output_bitmask);           
+        this->_write(_out_buffer|_input_bitmask);
     }   
 }
 
@@ -141,6 +155,7 @@ int PCA9539::setInputInterrupt(int pin,void (*callback)(void)){
 }
 
 uint16_t PCA9539::_read(){    
+    if(!_isValid) return 0 ;
     _wire->beginTransmission( _deviceAddress );
     _wire->write(PCA9539_INPUT_REGISTER);
     _wire->endTransmission();
@@ -157,17 +172,17 @@ uint16_t PCA9539::_read(){
 }
 
 void PCA9539::_write(uint16_t data){    
+    if(!_isValid) return;
     byte b[] = {PCA9539_OUTPUT_REGISTER,data&0xFF,(data>>8)&0xFF};
-    SerialDebug_printf("PCA9539 : Write Data   => %02X,%02X,%02X\n",b[0],b[1],b[2]);
-    delay(10);
+    //SerialDebug_printf("PCA9539 : Write Data   => %02X,%02X,%02X\n",b[0],b[1],b[2]);
     _wire->beginTransmission(_deviceAddress);
     _wire->write(b[0]);
     _wire->write(b[1]);
     _wire->write(b[2]);
     int n = _wire->endTransmission();     
-    if(n!=0){
-        SerialDebug_printf("Send data error %d\n",n);    
-    }
+    //if(n!=0){
+    //    SerialDebug_printf("Send data error %d\n",n);    
+    //}
 }
 
 uint16_t PCA9539::read(){
@@ -205,7 +220,7 @@ int PCA9539::read(int ch){
     print_binary(data,16);
     SerialDebug("\n");
     int out = (data>>pin)&0x1;
-    return !out;
+    return !out;    
 }
 
 void PCA9539::write(int ch,int state){
