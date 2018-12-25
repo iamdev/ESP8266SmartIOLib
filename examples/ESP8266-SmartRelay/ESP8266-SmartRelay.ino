@@ -1,3 +1,14 @@
+/**********************************************************************************/
+//  โปรแกรมตัวอย่างสำหรับบอร์ด MakeArduino SmartRelay Shield 4CH for NodeMcu/WemosD1 mini
+//  ขั้นตอนการใช้งาน
+//  1. เปิดใช้งานครั้งแรก เครื่องจะเข้าสู่ AP Smart Config ให้ใช้มือถือ connect wifi ชื่อ ESP-xxxxxxxx
+//  2. ป้อน Wifi SSID/Pass และ Blynk token แล้วกด Save
+//  3. รีบูทเครื่อง เข้า app Blynk ใช้งานได้ทันที
+//  4. ถ้าต้องการล้าง config กดปุ่ม CONFIG BTN บนบอร์ดค้างไว้ 5วินาที จนไฟบนบอร์ดหยุดกระพริบ แล้วเริ่มขั้นตอนที่ 1 ใหม่
+/**********************************************************************************/
+
+
+#include "config.h"
 #define BLYNK_PRINT Serial
 
 #include <SerialDebug.h>
@@ -5,9 +16,12 @@
 #include <ESP8266SmartIOLib.h>
 #include <PCF8574_IOEXP.h>
 #include <SimpleTask.h>
+#ifdef USE_LCD
 #include <LiquidCrystal_I2C.h>
+#endif
+#ifdef USE_DHT22
 #include <SimpleDHT.h>
-#include "config.h"
+#endif
 
 /*--Hardware List--
 1. LCD-1602 I2C
@@ -32,9 +46,13 @@ EEPROM_EX eeprom(EEPROM_I2C_ADDR);
 DeviceClass Device(DEVICE_SIGNATURE);
 DS3231RTC rtc;
 SerialCommand cmd;
+#ifdef USE_LCD
 LiquidCrystal_I2C lcd(0x3F,16,2);
+#endif
+#ifdef USE_DHT22
 SimpleDHT22 dht(D5);
-BlynkTimer timer;
+#endif
+//BlynkTimer timer;
 /******************************************/ 
 
 #ifdef DEBUG
@@ -49,6 +67,7 @@ void printSetting();
 bool ntpSuccess = false;
 float temperature;
 float humidity;
+int btn_ts=0;
 /******************************************/
 
 
@@ -58,8 +77,13 @@ float humidity;
 void handleWebConfig();
 void setupTasks();
 void readExpInput();
+#ifdef USE_DHT22 
 void updateDisplay(task_t &tk);
+#endif
+#ifdef USE_DHT22
 void readSensor();
+#endif
+
 void connectBlynk(task_t &tk);
 /******************************************/
 
@@ -74,10 +98,12 @@ void setup() {
   delay(1000);
 
   /******************************************/
+#ifdef USE_LCD  
   lcd.init();
   lcd.backlight();
   lcd.setCursor(0,0);
   lcd.print("Initializing...");
+#endif  
   /******************************************/
 
   /******************************************/
@@ -108,14 +134,23 @@ void setup() {
   /******************************************/
   /* check button to enter AP WebConfig mode*/
   /******************************************/
+  pinMode(BUTTON_PIN,OUTPUT);
+  digitalWrite(BUTTON_PIN,HIGH);
+  delay(1);  
   pinMode(BUTTON_PIN,INPUT_PULLUP);
   if(!digitalRead(BUTTON_PIN)){    
     pinMode(LED_BUILTIN,OUTPUT); 
     digitalWrite(LED_BUILTIN,LOW);
-    handleWebConfig();    
+    handleWebConfig();
   }
   /******************************************/
   printSetting();
+
+  if(!Device.wifiConfig.ssid[0]){
+    SerialDebug("No setting found, goto config mode.\n");
+    handleWebConfig();
+  }
+  
   /******************************************/
   /* Connect WiFi with timeout aboart (10s)  */
   /******************************************/
@@ -226,7 +261,7 @@ void handleWebConfig(){
   });
   while(wc.run());
   delay(3000);
-  ESP.restart();
+  ESP.reset();
 }
 
 void setupTasks(){
@@ -239,13 +274,36 @@ void setupTasks(){
       digitalWrite(LED_BUILTIN,LOW);
   },200);
 
+  /* Taks : Read Button*/  
+  Task.create([](task_t &tk){
+      pinMode(BUTTON_PIN,OUTPUT);
+      digitalWrite(BUTTON_PIN,HIGH);
+      pinMode(BUTTON_PIN,INPUT_PULLUP);
+      int b = digitalRead(BUTTON_PIN);
+      if(btn_ts == 0 && !b){
+          btn_ts = tk.timestamp;
+      }      
+      if(btn_ts>0 && (tk.timestamp-btn_ts)>5000){
+          Device.format();
+          ESP.reset();
+      }
+      if(b && btn_ts>0){
+        btn_ts = 0;
+      }
+  },20);      
   /* Task : Check input loop */
   Task.create([](task_t &tk){ex.inputLoop();},20);    
+  #ifdef USE_DHT22
   Task.create(readSensor,1000);
+  #endif
   /* Task : Update Diplay */
+  #ifdef USE_LCD
   Task.create(updateDisplay,200);
+  #endif
   Task.create(connectBlynk,0);
+  #ifdef USE_DHT22
   dht.read2(&temperature, &humidity, NULL);
+  #endif
 }
 
 void readExpInput(){
@@ -277,22 +335,27 @@ void printSetting(){
   SerialDebug("-------------------------------\n");
 }
 
+#ifdef USE_LCD
 void updateDisplay(task_t &tk){
   if(tk.timeoffset%1000<200){
     lcd.setCursor(0,0);
     DateTime t = rtc.now();
     char str[17]; 
     snprintf(str,17,"%02u/%02u/%4u %02u:%02u",t.day,t.month,t.year,t.hour,t.minute);
+    #ifdef USE_DHT22
     lcd.print(str);
     snprintf(str,17,"T:%2.1f%cC H:%2.1f%c",temperature,223,humidity,'%');
     lcd.setCursor(0,1);
     lcd.print(str);
+    #endif
   }else if(tk.timeoffset%1000>=800){
     lcd.setCursor(13,0);
     lcd.print(" ");
   }
 }
+#endif
 
+#ifdef USE_DHT22
 void readSensor(){
     int err = SimpleDHTErrSuccess;
     if ((err = dht.read2(&temperature, &humidity, NULL)) == SimpleDHTErrSuccess) {
@@ -303,6 +366,7 @@ void readSensor(){
       SerialDebug_printf("Read DHT failed, err=%d\n",err);   
     }
 }
+#endif
 
 int blynkRetryCount = 0;
 void connectBlynk(task_t &tk){
@@ -340,6 +404,4 @@ BLYNK_WRITE(V3)
 {
   ex.write(3,!param.asInt());
 }
-
-
 /******************************************/

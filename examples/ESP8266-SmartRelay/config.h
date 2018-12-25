@@ -1,5 +1,8 @@
 
 #define AUTO_UPDATE     0
+//#define USE_LCD
+//#define USE_DHT22
+
 
 #ifndef SDA 
 #define SDA     4
